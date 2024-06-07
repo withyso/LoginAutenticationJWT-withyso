@@ -15,6 +15,7 @@ from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
 
+from flask_bcrypt import Bcrypt
 # from models import Person
 
 ENV = "development" if os.getenv("FLASK_DEBUG") == "1" else "production"
@@ -26,6 +27,7 @@ app.url_map.strict_slashes = False
 #Obtener clave
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_KEY")
 jwt = JWTManager(app)
+bcrypt = Bcrypt(app)
 
 # database condiguration
 db_url = os.getenv("DATABASE_URL")
@@ -57,6 +59,26 @@ def handle_invalid_usage(error):
 
 # generate sitemap with all your endpoints
 
+#login and sign up - endpoint
+@app.route('/api/signup', methods=['POST'])
+def signup():
+    body = request.get_json(silent=True)
+    if body is None: 
+        return jsonify({'msg' : 'You need to add info inside body'}), 400
+    if 'email' not in body:
+        return jsonify({'msg' : 'You need to add email info'}), 400
+    if 'password' not in body: 
+        return jsonify({'msg' : 'you need to add password info'}), 400
+    new_user = User()
+    new_user.email = body['email']
+    new_user.password = bcrypt.generate_password_hash(body['password']).decode('utf-8')
+    new_user.is_active = True
+
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({"msg" : "new user created"}), 201
+
+
 @app.route('/api/login', methods=['POST'])
 def login(): 
     body = request.get_json(silent=True)
@@ -69,10 +91,10 @@ def login():
     
     user = User.query.filter_by(email=body['email']).all()
     if len(user) == 0:
+        return jsonify({'msg' : 'username or password invalid'}), 400 
+    correct_password = bcrypt.check_password_hash(user[0].password, body['password'])
+    if correct_password is False: 
         return jsonify({'msg' : 'username or password invalid'}), 400
-    if user[0].password != body['password']:
-        return jsonify({'msg' : 'username or password invalid'}), 400
-    
     access_token = create_access_token(identity=user[0].email)
     return jsonify({'msg' : 'ok', 'access_token' : access_token}), 200
 
